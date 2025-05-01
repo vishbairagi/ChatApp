@@ -191,7 +191,7 @@ class _AllUsersScreenState extends State<AllUsersScreen> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chats'),
           BottomNavigationBarItem(icon: Icon(Icons.star), label: 'Status'),
-          BottomNavigationBarItem(icon: Icon(Icons.call), label: 'Call'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
         selectedItemColor: Colors.black,
         unselectedItemColor: Colors.grey,
