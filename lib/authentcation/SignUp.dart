@@ -2,7 +2,7 @@ import 'dart:ui';
 
 import 'package:chatapp/authentcation/loginpage.dart';
 import 'package:chatapp/authentcation/uihelper.dart';
-import 'package:chatapp/homescreen.dart';
+import 'package:chatapp/contect.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -42,7 +42,7 @@ class _SignUpPageState extends State<SignUpPage> {
 
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => HomeScreen()),
+            MaterialPageRoute(builder: (context) =>AllUsersScreen()),
           );
         } else {
           UiHelper.CustomAlertBox(context, "User ID is null");

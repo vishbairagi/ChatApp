@@ -1,7 +1,7 @@
 
 import 'package:chatapp/authentcation/CreateAccount.dart';
 import 'package:chatapp/authentcation/Methods.dart';
-import 'package:chatapp/homescreen.dart';
+import 'package:chatapp/contect.dart';
 import 'package:flutter/material.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -119,7 +119,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 isLoading = false;
               });
               Navigator.push(
-                  context, MaterialPageRoute(builder: (_) => HomeScreen()));
+                  context, MaterialPageRoute(builder: (_) => AllUsersScreen()));
             } else {
               print("Login Failed");
               setState(() {
