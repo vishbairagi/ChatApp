@@ -12,12 +12,15 @@ class CallScreen extends StatefulWidget {
 class _CallScreenState extends State<CallScreen> {
   FirebaseAuth _auth = FirebaseAuth.instance;
   FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
   late User _currentUser;
-  String _name = '';  // Initialize with empty string
-  String _email = ''; // Initialize with empty string
-  String _profileUrl = ''; // Initialize with empty string
-  TextEditingController _nameController = TextEditingController();  // Controller for the name field
-  bool _isEditing = false; // Flag to track if the name is being edited
+  String _name = '';
+  String _email = '';
+  String _profileUrl = '';
+  bool _isEditing = false;
+  bool _isLoading = true;
+
+  TextEditingController _nameController = TextEditingController();
 
   @override
   void initState() {
@@ -26,52 +29,57 @@ class _CallScreenState extends State<CallScreen> {
     _fetchUserProfile();
   }
 
-  // Fetch user data from Firestore
   Future<void> _fetchUserProfile() async {
     try {
-      DocumentSnapshot userDoc = await _firestore.collection('users').doc(_currentUser.uid).get();
+      DocumentSnapshot userDoc =
+      await _firestore.collection('users').doc(_currentUser.uid).get();
+
       if (userDoc.exists) {
         setState(() {
           _name = userDoc['name'] ?? 'Unknown';
           _email = userDoc['email'] ?? 'No Email';
           _profileUrl = userDoc['profileUrl'] ?? '';
-          _nameController.text = _name;  // Set the name controller text to the fetched name
+          _nameController.text = _name;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
         });
       }
     } catch (e) {
       print("Error fetching user data: $e");
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
-  // Function to save the updated name to Firestore
   Future<void> _saveName() async {
     String updatedName = _nameController.text.trim();
 
     if (updatedName.isNotEmpty && updatedName != _name) {
       try {
-        // Update name in Firestore
         await _firestore.collection('users').doc(_currentUser.uid).update({
           'name': updatedName,
         });
 
-        // Update the local name and return to non-editable mode
         setState(() {
           _name = updatedName;
-          _isEditing = false; // Switch to non-editable mode
+          _isEditing = false;
         });
       } catch (e) {
         print("Error saving name: $e");
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text("Failed to save name."),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to save name.")),
+        );
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Show a loading spinner if name or email is empty (data hasn't been fetched yet)
-    if (_name.isEmpty || _email.isEmpty) {
+    if (_isLoading) {
       return Scaffold(
         appBar: AppBar(title: Text("Profile")),
         body: Center(child: CircularProgressIndicator()),
@@ -87,21 +95,29 @@ class _CallScreenState extends State<CallScreen> {
           children: [
             // Profile Picture
             Center(
-              child: CircleAvatar(
+              child: _profileUrl.isEmpty
+                  ? CircleAvatar(
+
                 radius: 60,
-                backgroundImage: _profileUrl.isEmpty
-                    ? AssetImage('assets/default_profile.png') as ImageProvider
-                    : NetworkImage(_profileUrl),
+                backgroundColor: Colors.black,
+                child: Icon(
+                  Icons.person,
+                  size: 60,
+                  color: Colors.white,
+                ),
+              )
+                  : CircleAvatar(
+                radius: 60,
+                backgroundImage: NetworkImage(_profileUrl),
               ),
             ),
-            SizedBox(height: 20),
+            SizedBox(height: 30),
 
             // Name (editable)
             GestureDetector(
               onTap: () {
-                // Make the name field editable
                 setState(() {
-                  _isEditing = true; // Switch to editing mode when the name is tapped
+                  _isEditing = true;
                 });
               },
               child: _isEditing
@@ -112,34 +128,33 @@ class _CallScreenState extends State<CallScreen> {
                   border: OutlineInputBorder(),
                 ),
                 onSubmitted: (_) {
-                  // Save the updated name when the user presses "Enter"
                   _saveName();
                 },
               )
                   : Text(
                 _name,
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.blue),
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black,
+                ),
               ),
             ),
-            SizedBox(height: 10),
+            SizedBox(height: 20),
 
             // Email
             Text(
               _email,
-              style: TextStyle(fontSize: 16, color: Colors.grey),
+              style: TextStyle(fontSize: 16, color: Colors.black),
             ),
             SizedBox(height: 20),
 
-            // Status (Optional)
-            Text(
-              'Status: Unavailable',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
+            // Static Status
           ],
         ),
       ),
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 0, // Set the default screen to 'Home'
+        currentIndex: 2,
         items: [
           BottomNavigationBarItem(
             icon: InkWell(
@@ -169,7 +184,7 @@ class _CallScreenState extends State<CallScreen> {
             icon: InkWell(
               child: Icon(Icons.person),
               onTap: () {
-                Navigator.push(
+                Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(builder: (context) => CallScreen()),
                 );
@@ -179,7 +194,7 @@ class _CallScreenState extends State<CallScreen> {
           ),
         ],
         selectedItemColor: Colors.black,
-        unselectedItemColor: Colors.black,
+        unselectedItemColor: Colors.black54,
       ),
     );
   }

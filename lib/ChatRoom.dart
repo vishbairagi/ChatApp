@@ -1,11 +1,12 @@
 import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
-
 class ChatRoom extends StatefulWidget {
   final Map<String, dynamic> userMap;
   final String chatRoomId;
@@ -27,28 +28,17 @@ class _ChatRoomState extends State<ChatRoom> {
     ImagePicker _picker = ImagePicker();
     final xFile = await _picker.pickImage(source: ImageSource.gallery);
     if (xFile != null) {
-      imageFile = File(xFile.path);
+      setState(() {
+        imageFile = File(xFile.path);
+      });
       uploadImage();
     }
   }
 
   Future uploadImage() async {
+    if (imageFile == null) return;
+
     String fileName = Uuid().v1();
-    int status = 1;
-
-    await _firestore
-        .collection('chatroom')
-        .doc(widget.chatRoomId)
-        .collection('chats')
-        .doc(fileName)
-        .set({
-      "sendby": _auth.currentUser!.displayName,
-      "message": "",
-      "type": "img",
-      "time": FieldValue.serverTimestamp(),
-      "isRead": false,
-    });
-
     var ref = FirebaseStorage.instance
         .ref()
         .child('images')
@@ -57,13 +47,23 @@ class _ChatRoomState extends State<ChatRoom> {
     try {
       var uploadTask = await ref.putFile(imageFile!);
       String imageUrl = await uploadTask.ref.getDownloadURL();
+
       await _firestore
           .collection('chatroom')
           .doc(widget.chatRoomId)
           .collection('chats')
           .doc(fileName)
-          .update({"message": imageUrl});
-    } catch (error) {
+          .set({
+        "sendby": _auth.currentUser!.displayName,
+        "message": imageUrl,
+        "type": "img",
+        "time": FieldValue.serverTimestamp(),
+        "isRead": false,
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to upload image: $e')),
+      );
       await _firestore
           .collection('chatroom')
           .doc(widget.chatRoomId)
@@ -83,26 +83,36 @@ class _ChatRoomState extends State<ChatRoom> {
         "isRead": false,
       };
 
-      _message.clear();
-      await _firestore
-          .collection('chatroom')
-          .doc(widget.chatRoomId)
-          .collection('chats')
-          .add(messages);
+      try {
+        await _firestore
+            .collection('chatroom')
+            .doc(widget.chatRoomId)
+            .collection('chats')
+            .add(messages);
+        _message.clear();
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to send message: $e')),
+        );
+      }
     }
   }
 
   void markMessagesAsRead() async {
-    var unreadMessages = await _firestore
-        .collection('chatroom')
-        .doc(widget.chatRoomId)
-        .collection('chats')
-        .where('sendby', isEqualTo: widget.userMap['name'])
-        .where('isRead', isEqualTo: false)
-        .get();
+    try {
+      var unreadMessages = await _firestore
+          .collection('chatroom')
+          .doc(widget.chatRoomId)
+          .collection('chats')
+          .where('sendby', isEqualTo: widget.userMap['name'])
+          .where('isRead', isEqualTo: false)
+          .get();
 
-    for (var doc in unreadMessages.docs) {
-      await doc.reference.update({'isRead': true});
+      for (var doc in unreadMessages.docs) {
+        await doc.reference.update({'isRead': true});
+      }
+    } catch (e) {
+      print('Error marking messages as read: $e');
     }
   }
 
@@ -132,10 +142,13 @@ class _ChatRoomState extends State<ChatRoom> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(widget.userMap['name'],style: TextStyle(color: Colors.white),),
                   Text(
-                    snapshot.data!['status'],
-                    style: TextStyle(fontSize: 14,color: Colors.white),
+                    widget.userMap['name'],
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  Text(
+                    snapshot.data!['status'] ?? 'Offline',
+                    style: TextStyle(fontSize: 14, color: Colors.white),
                   ),
                 ],
               );
@@ -156,18 +169,23 @@ class _ChatRoomState extends State<ChatRoom> {
                   .orderBy("time", descending: false)
                   .snapshots(),
               builder: (context, snapshot) {
-                if (snapshot.hasData) {
-                  return ListView.builder(
-                    itemCount: snapshot.data!.docs.length,
-                    itemBuilder: (context, index) {
-                      Map<String, dynamic> map = snapshot.data!.docs[index]
-                          .data() as Map<String, dynamic>;
-                      return messages(size, map, context);
-                    },
-                  );
-                } else {
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+                if (snapshot.connectionState == ConnectionState.waiting) {
                   return Center(child: CircularProgressIndicator());
                 }
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return Center(child: Text('No messages yet'));
+                }
+                return ListView.builder(
+                  itemCount: snapshot.data!.docs.length,
+                  itemBuilder: (context, index) {
+                    Map<String, dynamic> map = snapshot.data!.docs[index]
+                        .data() as Map<String, dynamic>;
+                    return messages(size, map, context);
+                  },
+                );
               },
             ),
           ),
@@ -204,13 +222,13 @@ class _ChatRoomState extends State<ChatRoom> {
   }
 
   Widget messages(Size size, Map<String, dynamic> map, BuildContext context) {
+    print('Message data: $map');
     final bool isSentByMe = map['sendby'] == _auth.currentUser!.displayName;
 
     return map['type'] == "text"
         ? Container(
       width: size.width,
-      alignment:
-      isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         padding: EdgeInsets.all(10),
@@ -224,19 +242,16 @@ class _ChatRoomState extends State<ChatRoom> {
               : CrossAxisAlignment.start,
           children: [
             Text(
-              map['message'],
+              map['message'] ?? 'No message',
               style: TextStyle(fontSize: 16),
             ),
             if (isSentByMe)
               Padding(
                 padding: const EdgeInsets.only(top: 4.0),
                 child: Icon(
-                  map['isRead'] == true
-                      ? Icons.done_all
-                      : Icons.check,
+                  map['isRead'] == true ? Icons.done_all : Icons.check,
                   size: 18,
-                  color:
-                  map['isRead'] == true ? Colors.blue : Colors.grey,
+                  color: map['isRead'] == true ? Colors.blue : Colors.grey,
                 ),
               ),
           ],
@@ -247,8 +262,7 @@ class _ChatRoomState extends State<ChatRoom> {
       height: size.height / 2.5,
       width: size.width,
       padding: EdgeInsets.symmetric(vertical: 5, horizontal: 5),
-      alignment:
-      isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
       child: InkWell(
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
@@ -264,6 +278,8 @@ class _ChatRoomState extends State<ChatRoom> {
               ? Image.network(
             map['message'],
             fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) =>
+                Text('Failed to load image'),
           )
               : CircularProgressIndicator(),
         ),
